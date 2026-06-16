@@ -2,19 +2,16 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 import { conmysql } from '../db.js'; 
 
-// 1. REGISTRO (Para usar desde Postman y guardar la clave encriptada de verdad)
+// 1. REGISTRO
 export const registrar = async (req, res) => {
     const { usr_usuario, usr_clave, usr_nombre, usr_telefono, usr_correo } = req.body;
 
     try {
-        // Encriptamos la clave usando bcrypt antes de guardarla
         const saltRounds = 10;
         const claveEncriptada = await bcrypt.hash(usr_clave, saltRounds);
 
-        // Insertamos en la base de datos con la clave encriptada
         const query = `INSERT INTO usuarios (usr_usuario, usr_clave, usr_nombre, usr_telefono, usr_correo, usr_activo) 
                        VALUES (?, ?, ?, ?, ?, 1)`;
-        
         
         await conmysql.query(query, [usr_usuario, claveEncriptada, usr_nombre, usr_telefono, usr_correo]);
 
@@ -26,16 +23,15 @@ export const registrar = async (req, res) => {
         return res.status(500).json({ message: 'Error al registrar el usuario' });
     }
 };
-
-// 2. LOGIN 
+// 2. LOGIN (CON LOGS DE DIAGNÓSTICO)
 export const login = async (req, res) => {
-    const { usuario, password } = req.body;
+    const { usr_usuario, usr_clave } = req.body;
+    console.log("Intento de login para usuario:", usr_usuario); // Veremos qué llega aquí
 
     try {
-        // Buscamos al usuario usando tu conmysql
-        const [rows] = await conmysql.query('SELECT * FROM usuarios WHERE usr_usuario = ?', [usuario]);
+        const [rows] = await conmysql.query('SELECT * FROM usuarios WHERE usr_usuario = ?', [usr_usuario]);
+        console.log("Resultado de la base de datos:", rows); // Veremos si encontró algo
 
-        // Si la base de datos no devuelve ninguna fila, el usuario no existe
         if (rows.length === 0) {
             return res.status(401).json({
                 message: 'Credenciales incorrectas (Usuario no existe)'
@@ -43,9 +39,7 @@ export const login = async (req, res) => {
         }
 
         const usuarioBD = rows[0];
-
-        // Comparamos la contraseña limpia con el hash encriptado de la BD
-        const coinciden = await bcrypt.compare(password, usuarioBD.usr_clave);
+        const coinciden = await bcrypt.compare(usr_clave, usuarioBD.usr_clave);
 
         if (!coinciden) {
             return res.status(401).json({
@@ -53,26 +47,16 @@ export const login = async (req, res) => {
             });
         }
 
-        // Si todo coincide, creamos el token
         const token = jwt.sign(
-            {
-                id: usuarioBD.usr_id,
-                usuario: usuarioBD.usr_usuario,
-                nombre: usuarioBD.usr_nombre
-            },
+            { id: usuarioBD.usr_id, usuario: usuarioBD.usr_usuario, nombre: usuarioBD.usr_nombre },
             process.env.JWT_SECRET,
-            {
-                expiresIn: '1h'
-            }
+            { expiresIn: '1h' }
         );
 
-        // Retornamos el token listo para appTienda
-        return res.json({
-            token
-        });
+        return res.json({ token });
 
     } catch (error) {
-        console.error(error);
+        console.error("Error crítico en login:", error); // Veremos si hay error de conexión
         return res.status(500).json({ message: 'Error interno en el servidor' });
     }
 };
