@@ -23,7 +23,7 @@ app.use(cors(corsOptions));
 app.use(express.json());
 
 // --- AGREGA ESTA LÍNEA PARA HACER LA CARPETA PÚBLICA ---
-app.use('/uploads', express.static('uploads'));
+app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
 // rutas
 app.use('/api', authRoutes);
