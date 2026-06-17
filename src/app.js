@@ -23,8 +23,7 @@ app.use(cors(corsOptions));
 app.use(express.json());
 
 // --- AGREGA ESTA LÍNEA PARA HACER LA CARPETA PÚBLICA ---
-// Esto asume que la carpeta 'uploads' está en la raíz del proyecto
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+app.use('/uploads', express.static('uploads'));
 
 // rutas
 app.use('/api', authRoutes);
