@@ -32,6 +32,7 @@ app.use(express.json());
 app.use('/api', authRoutes);
 app.use('/api', clientesRoutes);
 app.use('/api', productosRoutes);
+app.use('/api', pedidosRoutes);
 
 // Ruta para verificar si el servidor responde correctamente
 app.get('/api/health', (req, res) => {
