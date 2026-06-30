@@ -1,47 +1,125 @@
 import { conmysql } from '../db.js';
-
-export const crearPedido = async (req, res) => {
-    const { cli_id, usr_id, ped_estado, detalle } = req.body;
-    let connection;
+export const guardarPedido = async (req, res) => {
+    const conexion = await conmysql.getConnection();
 
     try {
-        // 1. Obtenemos una conexión individual del pool
-        connection = await conmysql.getConnection();
-        
-        // 2. Iniciamos la transacción
-        await connection.beginTransaction();
+        await conexion.beginTransaction();
+        const {
+            cli_id,
+            cli_identificacion,
+            cli_nombre,
+            cli_telefono,
+            cli_correo,
+            cli_direccion,
+            cli_pais,
+            cli_ciudad,
+            ped_fecha,
+            usr_id,
+            ped_estado,
+            detalle
+        } = req.body;
+        // Validaciones
+        if (!detalle || detalle.length === 0) {
+            throw new Error("El pedido no tiene productos.");
+        }
+        let idCliente = Number(cli_id);
+        // Cliente nuevo
+        if (idCliente === 0) {
 
-        // 3. Insertar el pedido
-        const [result] = await connection.query(
-            'INSERT INTO pedidos (cli_id, ped_fecha, usr_id, ped_estado) VALUES (?, NOW(), ?, ?)',
-            [cli_id, usr_id, ped_estado ? 1 : 0]
+            const [cliente] = await conexion.query(
+                `INSERT INTO clientes
+                (
+                    cli_identificacion,
+                    cli_nombre,
+                    cli_telefono,
+                    cli_correo,
+                    cli_direccion,
+                    cli_pais,
+                    cli_ciudad
+                )
+                VALUES (?,?,?,?,?,?,?)`,
+                [
+                    cli_identificacion,
+                    cli_nombre,
+                    cli_telefono,
+                    cli_correo,
+                    cli_direccion,
+                    cli_pais,
+                    cli_ciudad
+                ]
+            );
+
+            idCliente = cliente.insertId;
+        }
+        // Pedido
+        const [pedido] = await conexion.query(
+            `INSERT INTO pedidos
+            (
+                cli_id,
+                ped_fecha,
+                usr_id,
+                ped_estado
+            )
+            VALUES (?,?,?,?)`,
+            [
+                idCliente,
+                ped_fecha,
+                usr_id,
+                ped_estado
+            ]
         );
-        const ped_id = result.insertId;
-
-        // 4. Insertar el detalle del pedido
+        const ped_id = pedido.insertId;
+        // Detalle
         for (const item of detalle) {
-            await connection.query(
-                'INSERT INTO pedidos_detalle (ped_id, prod_id, det_cantidad, det_precio) VALUES (?, ?, ?, ?)',
-                [ped_id, item.prod_id, item.det_cantidad, item.det_precio]
+            if (Number(item.det_cantidad) <= 0) {
+                throw new Error(`Cantidad inválida del producto ${item.prod_id}`);
+            }
+            if (Number(item.det_precio) <= 0) {
+                throw new Error(`Precio inválido del producto ${item.prod_id}`);
+            }
+            // Verificar existencia del producto
+            const [producto] = await conexion.query(
+                "SELECT prod_id FROM productos WHERE prod_id=?",
+                [item.prod_id]
+            );
+            if (producto.length === 0) {
+                throw new Error(`El producto ${item.prod_id} no existe.`);
+            }
+            await conexion.query(
+                `INSERT INTO pedidos_detalle
+                (
+                    prod_id,
+                    ped_id,
+                    det_cantidad,
+                    det_precio
+                )
+                VALUES (?,?,?,?)`,
+                [
+                    item.prod_id,
+                    ped_id,
+                    item.det_cantidad,
+                    item.det_precio
+                ]
             );
         }
+        await conexion.commit();
+        res.status(201).json({
+            ok: true,
+            mensaje: "Pedido registrado correctamente.",
+            ped_id,
+            cli_id: idCliente
+        });
 
-        // 5. Confirmar transacción
-        await connection.commit();
-        res.status(201).json({ message: 'Pedido registrado con éxito', ped_id });
-        
     } catch (error) {
-        // 6. Rollback seguro: solo si la conexión existe
-        if (connection) {
-            await connection.rollback();
-        }
-        console.error("Error al registrar pedido:", error);
-        res.status(500).json({ message: "Error al registrar pedido: " + error.message });
-        
+        await conexion.rollback();
+        console.error(error);
+        res.status(500).json({
+            ok: false,
+            mensaje: error.message
+        });
+
     } finally {
-        // 7. Liberar la conexión al pool para que otros puedan usarla
-        if (connection) {
-            connection.release();
-        }
+        conexion.release();
     }
+
 };
