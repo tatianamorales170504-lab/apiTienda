@@ -1,5 +1,4 @@
 import { conmysql } from '../db.js';
-import { enviarNotificacion } from '../services/notificaciones.js';
 
 export const guardarPedido = async (req, res) => {
     const conexion = await conmysql.getConnection();
@@ -118,38 +117,6 @@ export const guardarPedido = async (req, res) => {
 
         // Confirmar transacción
         await conexion.commit();
-
-        // Buscar administradores con token Firebase
-        const [admins] = await conexion.query(`
-            SELECT usr_push_token
-            FROM usuarios
-            WHERE usr_rol = 'admin'
-        `);
-
-        // Enviar notificación
-        for (const admin of admins) {
-
-            if (!admin.usr_push_token) continue;
-
-            try {
-
-                await enviarNotificacion(
-                    admin.usr_push_token,
-                    "Nuevo pedido",
-                    `Se registró el pedido #${ped_id}`,
-                    {
-                        ped_id: String(ped_id),
-                        tipo: "nuevo_pedido"
-                    }
-                );
-
-            } catch (error) {
-
-                console.error("Error enviando notificación:", error);
-
-            }
-
-        }
 
         res.status(201).json({
             ok: true,
