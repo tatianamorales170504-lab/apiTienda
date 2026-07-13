@@ -1,5 +1,5 @@
 import { conmysql } from '../db.js';
-import admin from '../config/firebase.js';
+import { messaging } from '../config/firebase.js';
 
 
 export const guardarPedido = async (req, res) => {
@@ -26,6 +26,7 @@ export const guardarPedido = async (req, res) => {
         } = req.body;
 
 
+        // Validar detalle
         if (!detalle || detalle.length === 0) {
             throw new Error("El pedido no tiene productos.");
         }
@@ -34,7 +35,8 @@ export const guardarPedido = async (req, res) => {
         let idCliente = Number(cli_id);
 
 
-        // Registrar cliente nuevo
+
+        // Registrar cliente si es nuevo
         if (idCliente === 0) {
 
             const [cliente] = await conexion.query(
@@ -60,7 +62,9 @@ export const guardarPedido = async (req, res) => {
                 ]
             );
 
+
             idCliente = cliente.insertId;
+
         }
 
 
@@ -136,30 +140,31 @@ export const guardarPedido = async (req, res) => {
 
 
 
+        // Confirmar transacción
         await conexion.commit();
 
 
 
-        // ==========================================
-        // NOTIFICACIÓN SOLO AL ADMINISTRADOR
-        // ==========================================
 
+        // ====================================================
+        // NOTIFICACIÓN SOLO AL ADMINISTRADOR
+        // ====================================================
         try {
 
 
             const [usuario] = await conmysql.query(
-                "SELECT usr_usuario FROM usuarios WHERE usr_id=?",
+                "SELECT usr_usuario FROM usuarios WHERE usr_id = ?",
                 [usr_id]
             );
 
 
-            const nombreUsuario =
-                usuario.length > 0
-                    ? usuario[0].usr_usuario
-                    : "Un vendedor";
+            const nombreUsuario = usuario.length > 0
+                ? usuario[0].usr_usuario
+                : "Un vendedor";
 
 
 
+            // Buscar solo administradores
             const [admins] = await conmysql.query(`
                 SELECT 
                     usr_usuario,
@@ -173,7 +178,7 @@ export const guardarPedido = async (req, res) => {
 
 
             console.log(
-                "Administradores que recibirán notificación:",
+                "Administradores encontrados:",
                 admins
             );
 
@@ -210,15 +215,19 @@ export const guardarPedido = async (req, res) => {
 
 
                 const respuesta =
-                    await admin.messaging().send(message);
+                    await messaging.send(message);
+
 
 
                 console.log(
-                    "Firebase respuesta:",
+                    "Notificación enviada a:",
+                    adminUser.usr_usuario,
                     respuesta
                 );
 
+
             }
+
 
 
             console.log(
@@ -226,7 +235,9 @@ export const guardarPedido = async (req, res) => {
             );
 
 
+
         } catch(error) {
+
 
             console.error(
                 "Error al enviar notificación (no afecta al pedido):",
@@ -240,13 +251,13 @@ export const guardarPedido = async (req, res) => {
 
         res.status(201).json({
 
-            ok:true,
+            ok: true,
 
-            mensaje:"Pedido registrado correctamente.",
+            mensaje: "Pedido registrado correctamente.",
 
             ped_id,
 
-            cli_id:idCliente
+            cli_id: idCliente
 
         });
 
@@ -273,6 +284,217 @@ export const guardarPedido = async (req, res) => {
     } finally {
 
         conexion.release();
+
+    }
+
+};
+
+
+
+
+
+export const getPedidos = async (req, res) => {
+
+    try {
+
+
+        const [pedidos] = await conmysql.query(`
+
+            SELECT
+
+                p.ped_id,
+
+                p.cli_id,
+
+                c.cli_nombre,
+
+                p.ped_fecha,
+
+                p.usr_id,
+
+                p.ped_estado
+
+            FROM pedidos p
+
+            LEFT JOIN clientes c ON p.cli_id = c.cli_id
+
+            ORDER BY p.ped_fecha DESC
+
+        `);
+
+
+
+        const [detalles] = await conmysql.query(`
+
+            SELECT
+
+                d.det_id,
+
+                d.ped_id,
+
+                d.prod_id,
+
+                pr.prod_nombre,
+
+                pr.prod_imagen,
+
+                d.det_cantidad,
+
+                d.det_precio
+
+            FROM pedidos_detalle d
+
+            LEFT JOIN productos pr ON d.prod_id = pr.prod_id
+
+        `);
+
+
+
+        const pedidosConDetalles = pedidos.map(pedido => {
+
+
+            const detallesPedido = detalles.filter(
+                d => d.ped_id === pedido.ped_id
+            );
+
+
+            return {
+
+                ...pedido,
+
+                detalles: detallesPedido
+
+            };
+
+
+        });
+
+
+
+        res.json(pedidosConDetalles);
+
+
+
+    } catch(error) {
+
+
+        console.error(error);
+
+
+        res.status(500).json({
+
+            message:'Error al obtener los pedidos.'
+
+        });
+
+
+    }
+
+};
+
+
+
+
+
+export const getPedidoxId = async (req, res) => {
+
+    try {
+
+
+        const { id } = req.params;
+
+
+
+        const [pedidos] = await conmysql.query(`
+
+            SELECT
+
+                p.ped_id,
+
+                p.cli_id,
+
+                c.cli_nombre,
+
+                p.ped_fecha,
+
+                p.usr_id,
+
+                p.ped_estado
+
+            FROM pedidos p
+
+            LEFT JOIN clientes c ON p.cli_id = c.cli_id
+
+            WHERE p.ped_id = ?
+
+        `,[id]);
+
+
+
+        if(pedidos.length === 0){
+
+            return res.status(404).json({
+
+                message:'Pedido no encontrado.'
+
+            });
+
+        }
+
+
+
+        const pedido = pedidos[0];
+
+
+
+        const [detalles] = await conmysql.query(`
+
+            SELECT
+
+                d.det_id,
+
+                d.ped_id,
+
+                d.prod_id,
+
+                pr.prod_nombre,
+
+                pr.prod_imagen,
+
+                d.det_cantidad,
+
+                d.det_precio
+
+            FROM pedidos_detalle d
+
+            LEFT JOIN productos pr ON d.prod_id = pr.prod_id
+
+            WHERE d.ped_id = ?
+
+        `,[id]);
+
+
+
+        pedido.detalles = detalles;
+
+
+
+        res.json(pedido);
+
+
+
+    } catch(error){
+
+
+        console.error(error);
+
+
+        res.status(500).json({
+
+            message:'Error al obtener el pedido.'
+
+        });
+
 
     }
 
