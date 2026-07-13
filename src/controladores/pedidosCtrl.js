@@ -1,5 +1,5 @@
 import { conmysql } from '../db.js';
-import admin from 'firebase-admin';
+import admin from '../config/firebase.js';
 
 export const guardarPedido = async (req, res) => {
     const conexion = await conmysql.getConnection();
